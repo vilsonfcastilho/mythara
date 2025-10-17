@@ -5,18 +5,23 @@
 
 use bevy::prelude::*;
 
+use crate::game::tiled_map::TiledMap;
+
 mod animation;
 pub mod level;
 pub mod map;
 mod movement;
 pub mod player;
+pub mod tiled_map;
 
 pub(super) fn plugin(app: &mut App) {
+    app.init_asset::<TiledMap>();
     app.add_plugins((
         animation::plugin,
         level::plugin,
         movement::plugin,
         player::plugin,
         map::plugin,
+        tiled_map::plugin,
     ));
 }

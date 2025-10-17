@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     io::{Cursor, ErrorKind},
     sync::Arc,
 };
@@ -13,9 +13,9 @@ use bevy_ecs_tilemap::prelude::*;
 use thiserror::Error;
 
 pub(super) fn plugin(app: &mut App) {
-    app.init_asset::<TiledMap>();
     app.register_asset_loader(TiledLoader);
     app.add_plugins(TilemapPlugin);
+    app.init_resource::<CollisionTiles>();
     app.add_systems(Update, process_loaded_maps);
 }
 
@@ -25,7 +25,7 @@ pub struct TiledMap {
     pub tilemap_textures: HashMap<usize, TilemapTexture>,
 }
 
-#[derive(Default, Component)]
+#[derive(Default, Component, Debug)]
 pub struct TiledLayersStorage {
     pub storage: HashMap<u32, Entity>,
 }
@@ -40,6 +40,14 @@ pub struct TiledMapBundle {
     pub transform: Transform,
     pub global_transform: GlobalTransform,
     pub render_settings: TilemapRenderSettings,
+}
+
+#[derive(Resource, Default, Debug, Clone)]
+pub struct CollisionTiles {
+    pub blocked: HashSet<IVec2>,
+    pub map_size: UVec2,
+    pub grid_size: Vec2,
+    pub layer_offset: Vec2,
 }
 
 pub struct BytesResourceReader {
@@ -145,6 +153,7 @@ pub fn process_loaded_maps(
         &mut TilemapRenderSettings,
     )>,
     new_maps: Query<&TiledMapHandle, Added<TiledMapHandle>>,
+    mut collisions: ResMut<CollisionTiles>,
 ) {
     let mut changed_maps = Vec::<AssetId<TiledMap>>::default();
     for event in map_events.read() {
@@ -188,6 +197,8 @@ pub fn process_loaded_maps(
                     }
                     // commands.entity(*layer_entity).despawn_recursive();
                 }
+
+                // No overlay entities to clean up when tinting directly
 
                 // The TilemapBundle requires that all tile images come exclusively from a single
                 // tiled texture or from a Vec of independent per-tile images. Furthermore, all of
@@ -258,6 +269,18 @@ pub fn process_loaded_maps(
                         let mut tile_storage = TileStorage::empty(map_size);
                         let layer_entity = commands.spawn_empty().id();
 
+                        // If this is the Collisions layer, rebuild the collision set
+                        let is_collision_layer = layer.name == "Collisions";
+                        if is_collision_layer {
+                            collisions.blocked.clear();
+                            collisions.map_size = UVec2::new(map_size.x, map_size.y);
+                            collisions.grid_size = Vec2::new(
+                                tiled_map.map.tile_width as f32,
+                                tiled_map.map.tile_height as f32,
+                            );
+                            collisions.layer_offset = Vec2::new(offset_x, -offset_y);
+                        }
+
                         for x in 0..map_size.x {
                             for y in 0..map_size.y {
                                 // Transform TMX coords into bevy coords.
@@ -305,6 +328,14 @@ pub fn process_loaded_maps(
                                     .id();
 
                                 tile_storage.set(&tile_pos, tile_entity);
+
+                                // Record collision tiles by logical map coordinates
+                                if is_collision_layer {
+                                    // Rotate left (90° CCW) to align collision sampling with visuals
+                                    let width_i = map_size.x as i32;
+                                    let rotated = IVec2::new(y as i32, width_i - 1 - x as i32);
+                                    collisions.blocked.insert(rotated);
+                                }
                             }
                         }
 
@@ -330,6 +361,8 @@ pub fn process_loaded_maps(
                         layer_storage
                             .storage
                             .insert(layer_index as u32, layer_entity);
+
+                        // No overlay tilemap needed when tinting directly
                     }
                 }
             }

@@ -12,7 +12,6 @@ mod game;
 mod menus;
 mod screens;
 mod theme;
-mod tiled_map;
 
 use bevy::{asset::AssetMetaCheck, prelude::*};
 
@@ -42,7 +41,8 @@ impl Plugin for AppPlugin {
                     }
                     .into(),
                     ..default()
-                }),
+                })
+                .set(ImagePlugin::default_nearest()),
         );
 
         // Add other plugins.
@@ -54,7 +54,6 @@ impl Plugin for AppPlugin {
             menus::plugin,
             screens::plugin,
             theme::plugin,
-            tiled_map::plugin,
             game::plugin,
         ));
 

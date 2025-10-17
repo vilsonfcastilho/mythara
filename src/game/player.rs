@@ -1,5 +1,6 @@
 //! Player-specific behavior.
 
+use bevy::input::mouse::{MouseScrollUnit, MouseWheel};
 use bevy::{
     image::{ImageLoaderSettings, ImageSampler},
     prelude::*,
@@ -22,6 +23,14 @@ pub(super) fn plugin(app: &mut App) {
         Update,
         (record_player_directional_input)
             .in_set(AppSystems::RecordInput)
+            .in_set(PausableSystems),
+    );
+
+    // Make the main 2D camera follow the player.
+    app.add_systems(
+        Update,
+        follow_player_camera
+            .in_set(AppSystems::Update)
             .in_set(PausableSystems),
     );
 }
@@ -49,7 +58,7 @@ pub fn player(
             },
         ),
         Transform {
-            translation: Vec3::new(0., 16., 0.),
+            translation: Vec3::new(0., 16., 3.),
             scale: Vec2::splat(1.0).extend(1.0),
             ..Default::default()
         },
@@ -92,6 +101,37 @@ fn record_player_directional_input(
     // Apply movement intent to controllers.
     for mut controller in &mut controller_query {
         controller.intent = intent;
+    }
+}
+
+fn follow_player_camera(
+    player_transform: Single<&Transform, With<Player>>,
+    mut camera_query: Query<&mut Transform, (With<Camera2d>, Without<Player>)>,
+    mut mouse_wheel: MessageReader<MouseWheel>,
+) {
+    // Accumulate scroll input this frame
+    let mut scroll = 0.0f32;
+    for ev in mouse_wheel.read() {
+        let step = match ev.unit {
+            MouseScrollUnit::Line => 0.1,
+            MouseScrollUnit::Pixel => 0.001,
+        };
+        scroll += ev.y as f32 * step;
+    }
+
+    for mut cam_transform in &mut camera_query {
+        // Follow player position
+        cam_transform.translation.x = player_transform.translation.x;
+        cam_transform.translation.y = player_transform.translation.y;
+
+        // Apply zoom via camera transform scaling (scroll up -> zoom in)
+        if scroll != 0.0 {
+            let current = cam_transform.scale.x.max(0.0001);
+            let target = (current * (1.0 - scroll)).clamp(0.25, 3.0);
+            cam_transform.scale.x = target;
+            cam_transform.scale.y = target;
+            // Keep Z scale unchanged
+        }
     }
 }
 

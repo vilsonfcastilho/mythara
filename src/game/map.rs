@@ -4,14 +4,14 @@ use bevy::prelude::*;
 
 use crate::{
     asset_tracking::LoadResource,
-    tiled_map::{TiledMap, TiledMapBundle, TiledMapHandle},
+    game::tiled_map::{TiledMap, TiledMapBundle, TiledMapHandle},
 };
 
 pub(super) fn plugin(app: &mut App) {
     app.load_resource::<MapAssets>();
 }
 
-/// A system that spawns the main level.
+/// A system that spawns the main map.
 pub fn map(map_assets: &MapAssets) -> impl Bundle {
     let map_handle = map_assets.map.clone();
 

@@ -15,7 +15,7 @@
 
 use bevy::{prelude::*, window::PrimaryWindow};
 
-use crate::{AppSystems, PausableSystems};
+use crate::{AppSystems, PausableSystems, game::tiled_map::CollisionTiles};
 
 pub(super) fn plugin(app: &mut App) {
     app.add_systems(
@@ -53,12 +53,52 @@ impl Default for MovementController {
 
 fn apply_movement(
     time: Res<Time>,
+    collisions: Res<CollisionTiles>,
     mut movement_query: Query<(&MovementController, &mut Transform)>,
 ) {
     for (controller, mut transform) in &mut movement_query {
         let velocity = controller.max_speed * controller.intent;
-        transform.translation += velocity.extend(0.0) * time.delta_secs();
+
+        if velocity.length_squared() == 0.0 || collisions.blocked.is_empty() {
+            transform.translation += velocity.extend(0.0) * time.delta_secs();
+            continue;
+        }
+
+        let current = transform.translation.xy();
+        let target = current + velocity * time.delta_secs();
+
+        // If target tile is blocked, prevent movement this frame
+        let target_tile = world_to_iso_tile(target, &collisions);
+        if collisions.blocked.contains(&target_tile) {
+            continue;
+        }
+
+        transform.translation = target.extend(transform.translation.z);
     }
+}
+
+fn world_to_iso_tile(world: Vec2, collisions: &CollisionTiles) -> IVec2 {
+    let half_w = collisions.grid_size.x * 0.5;
+    let half_h = collisions.grid_size.y * 0.5;
+
+    // Center of the map in tile coordinates (due to TilemapAnchor::Center)
+    let center_x = (collisions.map_size.x as f32 - 1.0) * 0.5;
+    let center_y = (collisions.map_size.y as f32 - 1.0) * 0.5;
+
+    // Undo tilemap transform (offset applied at spawn)
+    let local = world - collisions.layer_offset;
+
+    // Convert to skewed isometric space
+    let sx = local.x / half_w;
+    let sy = local.y / half_h;
+
+    // Inverse of:
+    // world.x = (x - y - (center_x - center_y)) * half_w + offset_x
+    // world.y = (x + y - (center_x + center_y)) * half_h - offset_y
+    let tx = (sy + sx) * 0.5 + center_x;
+    let ty = (sy - sx) * 0.5 + center_y;
+
+    IVec2::new(tx.floor() as i32, ty.floor() as i32)
 }
 
 #[derive(Component, Reflect)]
